@@ -1,0 +1,23 @@
+db:
+  certgenerator:
+    url: ${POSTGRES_URL}
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
+
+server:
+  port: 8080
+  shutdown: graceful
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    url: /openapi.yaml
+    operationsSorter: method
+    tagsSorter: alpha
+
+spring:
+  main:
+    headless: false
