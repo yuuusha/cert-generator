@@ -1,6 +1,5 @@
 package com.diev.gui;
 
-import com.diev.entity.Template;
 import com.diev.service.TemplateService;
 
 import javax.swing.*;
@@ -16,7 +15,6 @@ public class TemplateDialog extends JDialog {
         super(owner, "Добавить шаблон", true);
 
         JTextField nameField = new JTextField(30);
-        JComboBox<String> typeCombo = new JComboBox<>(new String[]{"PNG", "PDF", "JPEG", "DOCX"});
         JButton chooseButton = new JButton("Выбрать файл");
         JButton saveButton = new JButton("Сохранить");
         JButton cancelButton = new JButton("Отмена");
@@ -27,9 +25,15 @@ public class TemplateDialog extends JDialog {
             try {
                 String name = nameField.getText().trim();
                 String fileName = fileNameField.getText().trim();
-                String fileType = (String) typeCombo.getSelectedItem();
 
-                Template template = templateService.registerTemplateFromResources(name, fileName, fileType);
+                if (name.isEmpty()) {
+                    throw new IllegalArgumentException("Введите название шаблона");
+                }
+                if (fileName.isEmpty()) {
+                    throw new IllegalArgumentException("Выберите файл шаблона");
+                }
+
+                var template = templateService.registerTemplateFromResources(name, fileName);
 
                 JOptionPane.showMessageDialog(
                         this,
@@ -47,7 +51,7 @@ public class TemplateDialog extends JDialog {
 
         cancelButton.addActionListener(e -> dispose());
 
-        JPanel form = new JPanel(new GridLayout(3, 3, 8, 8));
+        JPanel form = new JPanel(new GridLayout(2, 3, 8, 8));
         form.add(new JLabel("Название шаблона:"));
         form.add(nameField);
         form.add(new JLabel());
@@ -55,10 +59,6 @@ public class TemplateDialog extends JDialog {
         form.add(new JLabel("Файл шаблона:"));
         form.add(fileNameField);
         form.add(chooseButton);
-
-        form.add(new JLabel("Тип файла:"));
-        form.add(typeCombo);
-        form.add(new JLabel());
 
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         buttons.add(cancelButton);

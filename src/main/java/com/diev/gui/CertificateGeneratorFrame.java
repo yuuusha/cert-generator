@@ -34,7 +34,7 @@ public class CertificateGeneratorFrame extends JFrame {
     private final GenerationService generationService;
 
     private final JComboBox<ChoiceItem<Event>> eventCombo = new JComboBox<>();
-    private final JComboBox<ChoiceItem<Participant>> participantCombo = new JComboBox<>();
+    private final JList<ChoiceItem<Participant>> participantList = new JList<>(new DefaultListModel<>());
     private final JComboBox<ChoiceItem<Template>> templateCombo = new JComboBox<>();
     private final JComboBox<DocumentType> documentTypeCombo = new JComboBox<>(DocumentType.values());
     private final JComboBox<OutputFormat> outputFormatCombo = new JComboBox<>(OutputFormat.values());
@@ -82,7 +82,7 @@ public class CertificateGeneratorFrame extends JFrame {
         actions.add(refreshButton);
 
         JPanel generationForm = new JPanel(new GridBagLayout());
-        generationForm.setBorder(BorderFactory.createTitledBorder("Генерация документа"));
+        generationForm.setBorder(BorderFactory.createTitledBorder("Генерация документов"));
 
         GridBagConstraints c = new GridBagConstraints();
         c.insets = new Insets(6, 6, 6, 6);
@@ -92,13 +92,16 @@ public class CertificateGeneratorFrame extends JFrame {
         c.weightx = 0;
 
         addRow(generationForm, c, "Мероприятие:", eventCombo);
-        addRow(generationForm, c, "Участник:", participantCombo);
+        addRow(generationForm, c, "Участники:", new JScrollPane(participantList));
         addRow(generationForm, c, "Шаблон:", templateCombo);
         addRow(generationForm, c, "Тип документа:", documentTypeCombo);
         addRow(generationForm, c, "Формат:", outputFormatCombo);
 
-        JButton generateButton = new JButton("Сгенерировать");
-        generateButton.addActionListener(e -> generateDocument());
+        participantList.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+        participantList.setVisibleRowCount(6);
+
+        JButton generateButton = new JButton("Сгенерировать выбранным участникам");
+        generateButton.addActionListener(e -> generateDocuments());
 
         JPanel generatePanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
         generatePanel.add(generateButton);
@@ -139,9 +142,20 @@ public class CertificateGeneratorFrame extends JFrame {
     }
 
     private void reloadParticipants() {
-        reloadCombo(participantCombo, participantService.getAllParticipants(),
-                p -> p.getFullName() + " — " + p.getUniversity(),
-                Participant::getId);
+        DefaultListModel<ChoiceItem<Participant>> model = new DefaultListModel<>();
+        for (Participant participant : participantService.getAllParticipants()) {
+            model.addElement(new ChoiceItem<>(
+                    participant.getId(),
+                    participant.getFullName() + " — " + participant.getUniversity(),
+                    participant
+            ));
+        }
+        participantList.setModel(model);
+
+        if (!model.isEmpty()) {
+            int[] indices = IntStream.range(0, model.size()).toArray();
+            participantList.setSelectedIndices(new int[0]);
+        }
     }
 
     private void reloadTemplates() {
@@ -163,28 +177,50 @@ public class CertificateGeneratorFrame extends JFrame {
         }
     }
 
-    private void generateDocument() {
+    private void generateDocuments() {
         ChoiceItem<Event> eventItem = (ChoiceItem<Event>) eventCombo.getSelectedItem();
-        ChoiceItem<Participant> participantItem = (ChoiceItem<Participant>) participantCombo.getSelectedItem();
         ChoiceItem<Template> templateItem = (ChoiceItem<Template>) templateCombo.getSelectedItem();
         DocumentType documentType = (DocumentType) documentTypeCombo.getSelectedItem();
         OutputFormat outputFormat = (OutputFormat) outputFormatCombo.getSelectedItem();
 
-        if (eventItem == null || participantItem == null || templateItem == null) {
-            JOptionPane.showMessageDialog(this, "Нужно выбрать мероприятие, участника и шаблон.", "Ошибка", JOptionPane.ERROR_MESSAGE);
+        List<ChoiceItem<Participant>> selectedParticipants = participantList.getSelectedValuesList();
+
+        if (eventItem == null || templateItem == null) {
+            JOptionPane.showMessageDialog(this, "Нужно выбрать мероприятие и шаблон.", "Ошибка", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        if (selectedParticipants == null || selectedParticipants.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Нужно выбрать хотя бы одного участника.", "Ошибка", JOptionPane.ERROR_MESSAGE);
             return;
         }
 
         try {
-            String filePath = generationService.generateDocument(
+            List<Long> participantIds = selectedParticipants.stream()
+                    .map(ChoiceItem::id)
+                    .toList();
+
+            GenerationService.BatchGenerationResult result = generationService.generateDocumentsForParticipants(
                     eventItem.value().getId(),
-                    participantItem.value().getId(),
+                    participantIds,
                     templateItem.value().getId(),
                     documentType.name(),
                     outputFormat.name()
             );
 
-            JOptionPane.showMessageDialog(this, "Документ создан:\n" + filePath, "Успех", JOptionPane.INFORMATION_MESSAGE);
+            StringBuilder message = new StringBuilder();
+            message.append("Генерация завершена.\n");
+            message.append("Успешно: ").append(result.generatedFiles().size()).append("\n");
+            message.append("Ошибок: ").append(result.errors().size()).append("\n");
+
+            if (!result.errors().isEmpty()) {
+                message.append("\nОшибки:\n");
+                for (String error : result.errors()) {
+                    message.append("• ").append(error).append("\n");
+                }
+            }
+
+            JOptionPane.showMessageDialog(this, message.toString(), "Результат генерации", JOptionPane.INFORMATION_MESSAGE);
             refreshHistory();
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(this, ex.getMessage(), "Ошибка", JOptionPane.ERROR_MESSAGE);
@@ -195,7 +231,7 @@ public class CertificateGeneratorFrame extends JFrame {
         historyModel.setRowCount(0);
 
         Map<Long, String> eventNames = comboToMap(eventCombo);
-        Map<Long, String> participantNames = comboToMap(participantCombo);
+        Map<Long, String> participantNames = listToMap(participantList);
         Map<Long, String> templateNames = comboToMap(templateCombo);
 
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -222,6 +258,13 @@ public class CertificateGeneratorFrame extends JFrame {
     private <T> Map<Long, String> comboToMap(JComboBox<ChoiceItem<T>> combo) {
         return IntStream.range(0, combo.getItemCount())
                 .mapToObj(combo::getItemAt)
+                .collect(Collectors.toMap(ChoiceItem::id, ChoiceItem::label, (a, b) -> a));
+    }
+
+    private <T> Map<Long, String> listToMap(JList<ChoiceItem<T>> list) {
+        ListModel<ChoiceItem<T>> model = list.getModel();
+        return IntStream.range(0, model.getSize())
+                .mapToObj(model::getElementAt)
                 .collect(Collectors.toMap(ChoiceItem::id, ChoiceItem::label, (a, b) -> a));
     }
 

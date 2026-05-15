@@ -95,7 +95,7 @@ public class ConsoleRunner implements CommandLineRunner {
         System.out.print("File type (PNG/PDF/JPEG/DOCX): ");
         String fileType = scanner.nextLine();
 
-        Template template = templateService.registerTemplateFromResources(name, fileName, fileType);
+        Template template = templateService.registerTemplateFromResources(name, fileName);
         System.out.println("Registered template id=" + template.getId());
     }
 

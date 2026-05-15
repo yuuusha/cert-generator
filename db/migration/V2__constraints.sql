@@ -6,7 +6,7 @@ ALTER TABLE settings
 
 ALTER TABLE templates
     ADD CONSTRAINT chk_templates_file_type
-        CHECK (file_type IN ('PDF', 'PNG', 'JPEG', 'DOCX'));
+        CHECK (file_type IN ('PDF', 'PNG', 'JPEG', 'JPG'));
 
 ALTER TABLE generations
     ADD CONSTRAINT chk_generations_document_type

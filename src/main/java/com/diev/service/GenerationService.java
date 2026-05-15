@@ -16,6 +16,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -92,6 +93,84 @@ public class GenerationService {
         }
     }
 
+    public BatchGenerationResult generateDocumentsForParticipants(
+            Long eventId,
+            List<Long> participantIds,
+            Long templateId,
+            String documentType,
+            String outputFormat
+    ) {
+        if (participantIds == null || participantIds.isEmpty()) {
+            throw new IllegalArgumentException("At least one participant must be selected");
+        }
+
+        Event event = eventService.findEvent(eventId);
+        Template template = templateService.getTemplateForGeneration(templateId);
+        DocumentType docType = parseDocumentType(documentType);
+        OutputFormat format = parseOutputFormat(outputFormat);
+
+        List<String> generatedFiles = new ArrayList<>();
+        List<String> errors = new ArrayList<>();
+
+        for (Long participantId : participantIds) {
+            Participant participant = participantService.findParticipant(participantId);
+
+            try {
+                log.info("Starting generation: event={}, participant={}, template={}, type={}, format={}",
+                        event.getName(),
+                        participant.getFullName(),
+                        template.getName(),
+                        docType,
+                        format
+                );
+
+                Path generatedFile = documentGenerator.generate(
+                        Paths.get(template.getFilePath()),
+                        participant,
+                        docType,
+                        format,
+                        Paths.get(event.getFolderPath())
+                );
+
+                saveGenerationRecord(
+                        eventId,
+                        participantId,
+                        templateId,
+                        docType,
+                        format,
+                        generatedFile.toString(),
+                        STATUS_SUCCESS
+                );
+
+                generatedFiles.add(generatedFile.toString());
+                log.info("Generation finished successfully: {}", generatedFile);
+            } catch (Exception e) {
+                Path expectedPath = buildExpectedOutputPath(
+                        event.getFolderPath(),
+                        participant.getFullName(),
+                        docType,
+                        format
+                );
+
+                saveGenerationRecord(
+                        eventId,
+                        participantId,
+                        templateId,
+                        docType,
+                        format,
+                        expectedPath.toString(),
+                        STATUS_ERROR
+                );
+
+                String message = participant.getFullName() + ": " + e.getMessage();
+                errors.add(message);
+                log.error("Generation failed for participant {}", participant.getFullName(), e);
+            }
+        }
+
+        return new BatchGenerationResult(generatedFiles, errors);
+    }
+
     private void saveGenerationRecord(
             Long eventId,
             Long participantId,
@@ -152,5 +231,8 @@ public class GenerationService {
 
     public List<Generation> getGenerationHistory() {
         return generationRepository.getGenerationHistory();
+    }
+
+    public record BatchGenerationResult(List<String> generatedFiles, List<String> errors) {
     }
 }

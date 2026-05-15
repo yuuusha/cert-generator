@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
@@ -20,13 +21,14 @@ public class TemplateService {
     private static final Path TEMPLATES_ROOT = Paths.get("src/main/resources/templates");
 
     @Transactional
-    public Template registerTemplateFromResources(String name, String fileName, String fileType) {
+    public Template registerTemplateFromResources(String name, String fileName) {
         Path filePath = TEMPLATES_ROOT.resolve(fileName);
 
         if (!Files.exists(filePath)) {
             throw new IllegalArgumentException("Template file not found: " + filePath);
         }
 
+        String fileType = extractFileType(filePath.getFileName().toString());
         return saveTemplate(name, fileType, filePath.toString());
     }
 
@@ -36,7 +38,7 @@ public class TemplateService {
 
         Template template = new Template();
         template.setName(name);
-        template.setFileType(fileType.toUpperCase());
+        template.setFileType(fileType.toUpperCase(Locale.ROOT));
         template.setFilePath(filePath);
         template.setCreatedAt(Instant.now());
 
@@ -65,5 +67,18 @@ public class TemplateService {
         if (filePath == null || filePath.trim().isEmpty()) {
             throw new IllegalArgumentException("File path is required");
         }
+    }
+
+    private String extractFileType(String fileName) {
+        int dotIndex = fileName.lastIndexOf('.');
+        if (dotIndex < 0 || dotIndex == fileName.length() - 1) {
+            throw new IllegalArgumentException("Template file must have an extension");
+        }
+
+        String extension = fileName.substring(dotIndex + 1).toUpperCase(Locale.ROOT);
+        return switch (extension) {
+            case "PNG", "PDF", "JPEG", "JPG", "DOCX" -> extension;
+            default -> throw new IllegalArgumentException("Unsupported template file type: " + extension);
+        };
     }
 }
